@@ -1,0 +1,192 @@
+---
+title: "Reproducible Research Project 1"
+author: "Rafael Mejia"
+date: "02 de abril de 2017"
+output: html_document
+---
+
+1. Librerias a utilizar:
+```{r, echo=TRUE}
+library(dplyr)
+library(ggplot2)
+library(lattice)
+```
+
+2. Cargar los datos:
+```{r, echo=TRUE}
+activity <- read.csv("activity.csv")
+str(activity)
+```
+
+3. Procesar y transformar los datos previo al analisis:
+```{r, echo=TRUE}
+activity <- mutate(activity, date = as.Date(as.character(date), "%Y-%m-%d"))
+```
+
+#Cual es el numero total de pasos por día?
+
+1. Calcular el numero total de pasos por día.
+```{r, echo=TRUE}
+steps_per_day <- aggregate(steps ~ date, data = activity, sum, na.rm = TRUE)
+#pasos por día
+```
+
+2. Graficar histograma de pasos por día.
+```{r, echo=TRUE}
+hist(steps_per_day$steps, main = "Histograma del total de pasos dados en el día", xlab = "Pasos", breaks = 16, col = "wheat")
+```
+
+3. Calcular y reportar la media y mediana del total de pasos por día.
+```{r, echo=TRUE}
+mean_median_steps_per_day <- group_by(activity, date) %>%
+    summarise(mean = mean(steps, na.rm = TRUE),
+              median = median(steps, na.rm = TRUE))
+head(mean_median_steps_per_day)
+```
+
+Media y mediana
+```{r, echo=TRUE}
+dim(mean_median_steps_per_day)
+```
+
+#Cual es el patron promedio de actividad diaria?
+
+1. Hacer un grafico de seie temporal de los los intervalos de 5 minutos (eje x) y el promedio de pasos dados, promediado por días (en el eje x).
+
+```{r, echo=TRUE}
+interval_steps <- group_by(activity, interval) %>%
+    summarise(mean = mean(steps, na.rm = TRUE))
+with(interval_steps, 
+     plot(interval, mean, 
+          type = "l", 
+          xlab = "Intervalos de 5 minutos",
+          ylab = "Numero promedio de pasos por día"))
+```
+
+2. Cual es el intervalo de 5 minutos, en todos el conjunto des datos, contienen el numero maximo de pasos?
+
+```{r, echo=TRUE}
+max_steps_interval <- interval_steps$interval[which.max(interval_steps$mean)]
+max_steps_interval
+```
+
+#Datos no considerados
+
+1. Calcular el numero total de valor no considerados en el conjunto de datos
+```{r, echo=TRUE}
+any(is.na(activity$steps))
+```
+
+```{r, echo=TRUE}
+any(is.na(levels(activity$date)))
+```
+
+```{r, echo=TRUE}
+any(is.na(activity$interval))
+```
+
+2. Determinar el porcentaja de datos N/A en las filas
+```{r, echo=TRUE}
+NA_total <- sum(is.na(activity$steps))
+NA_proportion <- sum(is.na(activity$steps)) / nrow(activity)
+```
+
+El porcentaje de datos N/A es de 0.1311475
+
+3. Desarrollar una estrategia para rellenar todos los valores faltantes en el conjunto de datos. Hcer una copia del conjunto original de datos.
+
+```{r, echo=TRUE}
+activity_copy <- activity  
+rm(activity)  
+l <- nrow(activity_copy)
+for (i in 1:l) {
+    if (is.na(activity_copy$steps[i])) {
+        today = activity_copy$date[i]
+        sub_value = mean_median_steps_per_day[mean_median_steps_per_day$date == today, "median"]
+        if (!is.na(sub_value)) {
+            activity_copy$steps[i] = sub_value
+        } else {
+            pattern = activity_copy$interval[i]
+            sub_value = interval_steps[interval_steps$interval == pattern, "mean"]
+            activity_copy$steps[i] = sub_value
+        }
+    }
+}
+
+sum(is.na(activity_copy$steps))
+```
+
+```{r, echo=TRUE}
+activity_copy <- mutate(activity_copy, steps = as.numeric(steps))
+write.csv(activity_copy, file = "activity_copy.csv") 
+```
+
+4. Hacer un histograma del total de numero de pasos dados por día y calcular la media y mediana del total de numero de pasos por día.
+
+```{r, echo=TRUE}
+sum_mean_median_day <- group_by(activity_copy, date) %>%
+    summarise(sum_steps = sum(steps),
+              mean_steps = mean(steps),
+              median_steps = median(steps))
+sum_mean_median_day
+```
+
+Mostrar resultados:
+```{r, echo=TRUE}
+str(sum_mean_median_day)
+```
+
+Mostrar los graficos:
+```{r, echo=TRUE}
+par(mfcol = c(2,1))
+
+hist(sum_mean_median_day$sum_steps, main = "Histograma del total de pasos por día despues de rellenar los datos NA", xlab = "Pasos", breaks = 16, col = "wheat")
+hist(steps_per_day$steps, main = "Histograma del total de pasos por día antes de rellenar los datos NA", xlab = "Pasos", breaks = 16, col = "wheat", ylim = c(0,15))
+```
+
+5. Graficar la media de pasos dados por día antes y despues de completar los datos NA.
+
+```{r, echo=TRUE}
+plot(sum_mean_median_day$date, sum_mean_median_day$mean_steps, type = "h", pch = 1, col = "red")
+points(mean_median_steps_per_day$date, mean_median_steps_per_day$mean, pch = 4)
+legend("topleft", pch = c(1,4), col = c("red", "black"), legend = c("Antes", "Despues"))
+```
+Nota: Las lineas verticales rojas sin X en el extremo indican los valores no validos en el archivo original. 
+
+#Hay alguna diferencia entre los patrones de actividad entre los dias de semana y los fines de semana?
+
+1. Crear una nueva variable en el conjunto de datos para dos niveles (Dias de semana y fines de semana) que indique si la fecha dada es dia de semana o fin de semana. Se usará la función weekdays()
+
+```{r, echo=TRUE}
+class(activity_copy$date)
+```
+
+```{r, echo=TRUE}
+state <- ifelse(weekdays(activity_copy$date) %in% c("Saturday", "Sunday"), "weekend", "weekday")
+state <- as.factor(state)
+activity_copy$state <- state
+str(activity_copy)
+```
+
+2. Hacer un grafico conteniendo las series de tiempo de los intervalos de 5 minutos y el promedio de pasos dados (eje x), promediado a traves de todos los dias de semana y fines de semana (eje y).
+
+```{r, echo=TRUE}
+average_steps_state <- group_by(activity_copy, state, interval) %>%
+    summarise(average_steps = mean(steps))
+str(average_steps_state)
+```
+
+```{r, echo=TRUE}
+g <- ggplot(average_steps_state, aes(x = interval, y = average_steps)) +
+    geom_line() + 
+    facet_grid(state ~ .) + 
+    labs(x = "Intervalo") + 
+    labs(y = "Numero de pasos")
+g #grafico con ggplot2
+```
+
+Graficar nuevamente con la libreria lattice:
+```{r, echo=TRUE}
+xyplot(average_steps ~ interval | state, data = average_steps_state, type = "l", layout = c(1,2), xlab = "Intervalo", ylab = "Numero de pasos")
+```
+
